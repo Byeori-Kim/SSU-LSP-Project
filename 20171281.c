@@ -4,6 +4,8 @@
 #include <fcntl.h>
 #include <string.h>
 #include <time.h>
+#include <sys/wait.h>
+#include <sys/types.h>
 
 #define Max_Int 20000
 
@@ -14,10 +16,10 @@ int **matrix;
 int mat_check(int r, int c);
 void secq_mode(int gen);
 void secq_out();
-void paral_mode(int par_num, int gen);
-void paral_out(int par_num);
-void thre_mode(int par_num, int gen);
-void thre_out(int par_num);
+void paral_mode(int chi_num, int gen);
+void paral_out(int chi_num);
+void thre_mode(int thr_num, int gen);
+void thre_out(int thr_num);
 
 int main(int argc, char *argv[]) 
 {
@@ -204,6 +206,7 @@ void secq_mode(int gen)
 		}
 		fprintf(fp, "\n");
 	}
+	fflush(fp);
 	for(int i = 1; i < row-1; i++)
 	{
 		for(int j = 1; j < col-1; j++)
@@ -249,6 +252,7 @@ void secq_out()
 		}
 		fprintf(fp, "\n");
 	}
+	fflush(fp);
 	for(int i = 1; i < row-1; i++)
 	{
 		for(int j = 1; j < col-1; j++)
@@ -257,22 +261,176 @@ void secq_out()
 		}
 	}
 }
-void paral_mode( int par_num, int gen)
+void paral_mode( int chi_num, int gen)
 {
-	printf("In paral_mode function\n");
+	char fname[20];
+	int *work_num;
+	pid_t pid;
+	work_num = (int*)calloc(chi_num, sizeof(int));
+	for(int i = 0; i < chi_num; i++)
+	{
+		work_num[i] = (row-2)/chi_num;
+	}
+	for(int i = 0; i < (row-2)%chi_num; i++)
+	{
+		work_num[i]++;
+	}
+	int *wstart;
+	wstart = (int*)calloc(chi_num, sizeof(int));
+	wstart[0] = 1;
+	for(int i = 1; i < chi_num; i++)
+	{
+		wstart[i] = wstart[i-1] + work_num[i-1];
+	}
+
+	FILE *fp;
+	sprintf(fname, "gen_%d.matrix", gen);
+	fp = fopen(fname, "a");
+	int **mat;
+	mat = (int**)malloc(sizeof(int*)*row);
+	for(int i = 0; i < row; i++)
+	{
+		mat[i] = (int*)calloc(col, sizeof(int));
+	}
+	for(int i = 0; i < chi_num; i++)
+	{
+		pid = vfork();
+		if (pid < 0)
+		{
+			fprintf(stderr, "fork error\n");
+			_exit(1);
+		}
+		else if(pid == 0)
+		{
+			//printf("chile process #%d success\n", i);
+			for(int j = wstart[i]; j < wstart[i]+work_num[i];j++)
+			{
+				for(int k = 1; k < col-1; k++)
+				{
+					int count = mat_check(j, k);
+
+					if(matrix[j][k] == 0)
+					{
+						if(count == 4)
+							mat[j][k] = 1;
+						else
+							mat[j][k] = 0;
+					}
+					else if(matrix[j][k] == 1)
+					{
+						if(count<=2 || count>=7)
+							mat[j][k] = 0;
+						else
+							mat[j][k] = 1;
+					}
+
+				}
+			}
+			printf("ID of child process #%d of generation %d is %d\n", i, gen, getpid());
+			_exit(0);
+		}
+	}
+	while(wait((int *)0) != -1);
+	for(int i = 1; i < row-1; i++)
+	{
+		for(int j = 1; j < col-1; j++)
+		{
+			fprintf(fp, "%d ", mat[i][j]);
+			matrix[i][j] = mat[i][j];
+		}
+		fprintf(fp, "\n");
+	}
+	fflush(fp);
 }
 
-void paral_out( int par_num)
+void paral_out( int chi_num)
 {
-	printf("In paral_mode function\n");
+	char fname[] = "output.matrix";
+	FILE *fp;
+	fp = fopen(fname, "a");
+	int *work_num;
+	pid_t pid;
+	work_num = (int*)calloc(chi_num, sizeof(int));
+	for(int i = 0; i < chi_num; i++)
+	{
+		work_num[i] = (row-2)/chi_num;
+	}
+	for(int i = 0; i < (row-2)%chi_num; i++)
+	{
+		work_num[i]++;
+	}
+	int *wstart;
+	wstart = (int*)calloc(chi_num, sizeof(int));
+	wstart[0] = 1;
+	for(int i = 1; i < chi_num; i++)
+	{
+		wstart[i] = wstart[i-1] + work_num[i-1];
+	}
+	int **mat;
+	mat = (int**)malloc(sizeof(int*)*row);
+	for(int i = 0; i < row; i++)
+	{
+		mat[i] = (int*)calloc(col, sizeof(int));
+	}
+	for(int i = 0; i < chi_num; i++)
+	{
+		pid = vfork();
+		if (pid < 0)
+		{
+			fprintf(stderr, "fork error\n");
+			_exit(1);
+		}
+		else if(pid == 0)
+		{
+			//printf("chile process #%d success\n", i);
+			for(int j = wstart[i]; j < wstart[i]+work_num[i];j++)
+			{
+				for(int k = 1; k < col-1; k++)
+				{
+					int count = mat_check(j, k);
+
+					if(matrix[j][k] == 0)
+					{
+						if(count == 4)
+							mat[j][k] = 1;
+						else
+							mat[j][k] = 0;
+					}
+					else if(matrix[j][k] == 1)
+					{
+						if(count<=2 || count>=7)
+							mat[j][k] = 0;
+						else
+							mat[j][k] = 1;
+					}
+
+				}
+			}
+			printf("ID of child process #%d of last generation is %d\n", i, getpid());
+			_exit(0);
+		}
+	}
+	while(wait((int *)0) != -1);
+	for(int i = 1; i < row-1; i++)
+	{
+		for(int j = 1; j < col-1; j++)
+		{
+			fprintf(fp, "%d ", mat[i][j]);
+			matrix[i][j] = mat[i][j];
+		}
+		fprintf(fp, "\n");
+	}
+	fflush(fp);
+
+
 }
 
-void thre_mode(int par_num, int gen)
+void thre_mode(int thr_num, int gen)
 {
 	printf("In thre_mode function\n");
 }
 
-void thre_out(int par_num)
+void thre_out(int thr_num)
 {
 	printf("In thre_mode function\n");
 }
